@@ -1,0 +1,15 @@
+{
+    "bitwise": true,
+    "curly": true,
+    "eqeqeq": true,
+    "forin": true,
+    "noarg": true,
+    "noempty": true,
+    "nonew": true,
+    "undef": true,
+    "devel": true,
+    "jquery": true,
+    "node": true,
+    "nonstandard": true,
+    "onevar": true
+}

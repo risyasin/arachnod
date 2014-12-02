@@ -1,0 +1,28 @@
+{
+  "name": "arachnod",
+  "version": "0.1.0",
+  "description": "Web Crawler for Node.js (Redis)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://www.github.com/risyasin/arachnod.git"
+  },
+  "keywords": [
+    "Arachnode",
+    "Crawler",
+    "Spider",
+    "Bot",
+    "Scraper",
+    "Scraping"
+  ],
+  "author": "yasin inat <risyasin@gmail.com>",
+  "license": "BSD",
+  "dependencies": {
+    "cheerio": "^0.17.0",
+    "eventemitter2": "^0.4.14",
+    "superagent": "^0.18.2"
+  }
+}
