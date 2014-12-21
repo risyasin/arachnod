@@ -23,6 +23,7 @@
   "dependencies": {
     "cheerio": "^0.17.0",
     "eventemitter2": "^0.4.14",
-    "superagent": "^0.18.2"
+    "superagent": "^0.18.2",
+    "underscore": "^1.7.0"
   }
 }
