@@ -16,4 +16,25 @@ Also uses [SuperAgent](https://github.com/visionmedia/superagent) as HTTP Client
     npm install arachnod
     
 * via Git 
-    git clone http://git.evrima.net/admin/projects/dev/arachnod
+    git clone http://git.evrima.net/dev/arachnod.git
+    
+
+###### How to use
+
+```javascript
+
+    var bot = require('arachnod')('127.0.0.1');
+    
+    bot.on('hit', function (doc, $, text) {
+        $("a").each(function() {
+        
+        });
+    });
+
+    bot.on('error', function (err, doc) {
+        console.log(['Bot error', err, doc]);
+    });
+
+    bot.crawl('https://www.google.com/?q=nodejs+arachnod', function (status) {
+        tcb(null, true);
+    });
