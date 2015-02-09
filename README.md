@@ -35,6 +35,6 @@ Also uses [SuperAgent](https://github.com/visionmedia/superagent) as HTTP Client
         console.log(['Bot error', err, doc]);
     });
 
-    bot.crawl('https://www.google.com/?q=nodejs+arachnod', function (status) {
+    bot.crawl('https://www.google.com/?q=nodejs', function (status) {
         tcb(null, true);
     });
