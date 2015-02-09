@@ -13,22 +13,20 @@ Also uses [SuperAgent](https://github.com/visionmedia/superagent) as HTTP Client
 
 ###### How to install 
 * via NPM 
-```
-    npm install arachnod
+`npm install arachnod`
 
 * via Git 
-```
-	git clone http://git.evrima.net/dev/arachnod.git
-   
+`git clone https://github.com/risyasin/arachnod.git`
+
 ###### How to use
 
-```javascript
+```js
 
     var bot = require('arachnod');
     
     bot.crawl({
         'redis': 'localhost',
-        'parallel': 12,
+        'parallel': 4,
         'start': 'https://www.npmjs.com/package/arachnod',
         'verbose': 1,
         'ignorePaths': ['/list-of-paths/should-be-ignored'],
@@ -39,6 +37,7 @@ Also uses [SuperAgent](https://github.com/visionmedia/superagent) as HTTP Client
         /* $ is JQuery like Cheerio object that provides access to DOM*/
         /* doc contains task information & headers of hit. */
         console.log($('#readme p').text());
+		console.log($('#readme a').text());
     });
     
     bot.on('error', function (err, task) {
@@ -48,3 +47,4 @@ Also uses [SuperAgent](https://github.com/visionmedia/superagent) as HTTP Client
     bot.on('end', function (err, status) {
         console.log(['arachnod tasks ended:', err, status]);
     });
+```
