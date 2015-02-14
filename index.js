@@ -14,26 +14,29 @@ var redis   = require("redis"),
     }),
     status  = 'init',
     startTime =  Date.now(),
-    stats =  { 'added': 0, 'downloaded': 0, 'canceled': 0, 'ignored': 0, 'finished': 0, 'retry': 0, 'failed': 0 },
-    spiderlings = [],
     tasks = defKey + '_tasks',
     finished = defKey + '_finished',
     params = {
         'redis': '127.0.0.1',
         'redisPort': 6379,
-        'parallel': 8,
+        'parallel': 4,
         'verbose': 0,
         'resume': false,
         'sameDomain': true,
         'useCookies': true
     };
 
+Arch.spiderlings = [];
+
+Arch.stats = { 'added': 0, 'downloaded': 0, 'canceled': 0, 'ignored': 0, 'finished': 0, 'retry': 0, 'failed': 0, 'forks': [] };
 
 Arch.processHit = function (task, result) {
+
     if (!!result && !!task && !!task.url && result.status === 200){
-        status = "parsing " + task.url; stats.downloaded++;
+        status = 'parsing ' + task.url;
+        Arch.stats.downloaded++;
         try {
-            // only text/html will be downloaded!
+            // only text/html will be processed!
             if (result.headers['content-type'].slice(0,9) !== 'text/html'){ throw 'cancelUrl'; }
             var $ = cheerio.load(result.text),
                 taskp = Url.parse(task.url),
@@ -50,27 +53,27 @@ Arch.processHit = function (task, result) {
                     if (urlp.host === taskp.host){ // same domain
                         if (_.indexOf(params.ignorePaths, urlp.path) === -1) {
                             Arch.queue({"url": href});
-                            stats.added++;
+                            Arch.stats.added++;
                             if (params.verbose > 8){ console.log(['queue url', href, urlp.path]); }
                         }
                     }
                 }
             });
-            stats.finished++;
+            Arch.stats.finished++;
             Arch.emit('hit', doc, $);
 
         } catch(e) {
             if (e === 'retry'){
                 Arch.queue(task);
-                stats.retry++;
+                Arch.stats.retry++;
             } else if (e === 'cancelUrl') {
                 if (params.verbose > 5){ console.log(['canceled', task]); }
-                stats.canceled++;
+                Arch.stats.canceled++;
             } else if (e === 'ignoreUrl') {
                 if (params.verbose > 5){ console.log(['ignored', task]); }
-                stats.ignored++;
+                Arch.stats.ignored++;
             } else {
-                stats.failed++;
+                Arch.stats.failed++;
                 console.log(['processHit failed', task]);
                 Arch.emit('error', task, e);
             }
@@ -81,12 +84,19 @@ Arch.processHit = function (task, result) {
     } else {
         if (!!task){ Arch.queue(task); }
     }
+
+};
+
+Arch.exitFn = function () {
+    Arch.spiderlings.forEach(function (fn) { fn.kill(0); });
+    process.exit();
 };
 
 Arch.statsLog = function () {
-    stats.mem = Math.ceil((process.memoryUsage().rss/1024)/1024) + ' Mb';
-    stats.children = spiderlings.length;
-    Arch.emit('stats', stats);
+    Arch.stats.mem = Math.ceil((process.memoryUsage().rss/1024)/1024) + ' Mb';
+    Arch.stats.children = Arch.spiderlings.length;
+    Arch.spiderlings.forEach(function (fn) { Arch.stats.forks.push(fn.pid); });
+    Arch.emit('stats', Arch.stats);
 };
 
 Arch.queue = function (taskData) {
@@ -98,6 +108,7 @@ Arch.queue = function (taskData) {
             }
         });
     }
+    Arch.statsLog();
 };
 
 Arch.resetQueues = function (cb) {
@@ -122,27 +133,30 @@ Arch.crawl = function (userParams) {
             Arch.processHit(msg.task, msg.result);
         }
         if (!!msg.cmd && msg.cmd === 'exit'){
-            _.each(spiderlings, function (sp, k) {
+            _.each(Arch.spiderlings, function (sp, k) {
                 if (sp && msg.pid === sp.pid){
-                    delete spiderlings[k];
+                    delete Arch.spiderlings[k];
                 }
             });
 
-            if (spiderlings.length === 0){
-                Arch.emit('end', stats);
+            if (Arch.spiderlings.length === 0){
+                Arch.emit('end', Arch.stats);
             }
         }
+        Arch.statsLog();
         //console.log('Tasks: '+ Arch.rc.scard(tasks) + ' Finished: ' + Arch.rc.scard(finished));
         //console.log(msg);
     },
     initiate = function () {
         console.log('Started to crawl: ' + params.start + ' at ' + startTime);
+        console.log(params);
         Arch.queue({'url': params.start});
         for(var i = 0; i<params.parallel; i++) {
-            spiderlings[i] = child.fork(__dirname + '/spiderling.js', [params.redis, tasks, finished, params.verbose]);
-            spiderlings[i].on('message', getMsgs);
-            spiderlings[i].send({'cmd':'run'});
+            Arch.spiderlings[i] = child.fork(__dirname + '/spiderling.js', [params.redis, tasks, finished, params.verbose]);
+            Arch.spiderlings[i].on('message', function (msg) { getMsgs(msg); });
+            Arch.spiderlings[i].send({'cmd':'run'});
         }
+        Arch.statsLog();
     };
 
     if (!params.resume){
@@ -153,8 +167,13 @@ Arch.crawl = function (userParams) {
 
 };
 
-process.on("uncaughtException", function (err) {
-    console.log(err.stack);
+process.on('exit', Arch.exitFn.bind(null));
+
+process.on('SIGINT', Arch.exitFn.bind(null));
+
+process.on('uncaughtException', function (err) {
+    console.log(err);
+    Arch.exitFn();
 });
 
 module.exports = Arch;
