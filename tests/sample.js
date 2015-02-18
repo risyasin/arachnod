@@ -5,7 +5,8 @@ var bot = require('../index.js');
 bot.crawl({
     'redis': 'localhost',
     'parallel': 4,
-    'start': 'https://www.npmjs.com/package/arachnod',
+    'start': 'http://www.pocu.eu/',
+    //'start': 'https://www.npmjs.com/package/arachnod',
     'verbose': 1,
     'ignorePaths': ['/list-of-paths/should-be-ignored'],
     'resume': false

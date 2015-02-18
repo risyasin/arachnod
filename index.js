@@ -95,7 +95,11 @@ Arch.exitFn = function () {
 Arch.statsLog = function () {
     Arch.stats.mem = Math.ceil((process.memoryUsage().rss/1024)/1024) + ' Mb';
     Arch.stats.children = Arch.spiderlings.length;
-    Arch.spiderlings.forEach(function (fn) { Arch.stats.forks.push(fn.pid); });
+
+    Arch.spiderlings.forEach(function (fn) {
+        console.log(['pi', fn, fn.pid]);
+        Arch.stats.forks.push(fn.pid);
+    });
     Arch.emit('stats', Arch.stats);
 };
 
@@ -130,10 +134,13 @@ Arch.crawl = function (userParams) {
 
     var getMsgs = function (msg) {
         if (!!msg.cmd && msg.cmd === 'hit'){
+
             Arch.processHit(msg.task, msg.result);
-        }
-        if (!!msg.cmd && msg.cmd === 'exit'){
+
+        } else if (!!msg.cmd && msg.cmd === 'exit'){
+
             _.each(Arch.spiderlings, function (sp, k) {
+                console.log(['delete spl', sp, k]);
                 if (sp && msg.pid === sp.pid){
                     delete Arch.spiderlings[k];
                 }

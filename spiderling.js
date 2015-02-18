@@ -3,9 +3,9 @@
 var ps      = process.argv.splice(2),
     redis   = require("redis"),
     Agent   = require("superagent"),
-    Url     = require("url"),
     _       = require("underscore"),
     rs      = ps[0],
+    idleTime = 10,
     status  = "init",
     tasks   = ps[1],
     finished = ps[2],
@@ -48,9 +48,9 @@ var ps      = process.argv.splice(2),
                 task = JSON.parse(task);
                 cb(task);
             } else {
-                if (nullCounter === 20) {
+                if (nullCounter === (idleTime*2)+1) {
                     process.send({'cmd': 'exit', 'pid': process.pid});
-                    setTimeout(process.exit, 500);
+                    setTimeout(function () { process.exit(0); }, 500);
                 } else {
                     status = 'idle';
                     if (verbosity > 5){ console.dir(['status', status]); }
@@ -64,7 +64,7 @@ var ps      = process.argv.splice(2),
         rc.scard(tasks, function (err, tl) {
             rc.scard(finished, function (err, fl) {
                 //console.log(['scard task', err, tl]);
-                process.send({'cmd':'stat'});
+                //process.send({'cmd':'stat'});
                 if (verbosity > 5){ console.dir(['queue', 'fin: ' + fl, 't: ' + tl]); }
                 if (tl>0){ setTimeout(run, 500); }
             });
