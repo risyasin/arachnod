@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="description" content="Arachnod : High performance crawler for Nodejs">
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Arachnod</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/risyasin/arachnod">View on GitHub</a>
+
+          <h1 id="project_title">Arachnod</h1>
+          <h2 id="project_tagline">High performance crawler for Nodejs</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/risyasin/arachnod/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/risyasin/arachnod/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <p>Powerful &amp; Easy to use web crawler for Nodejs.  <a href="http://arachnod.evrima.net">Arachnod</a> has been designed for heavy long runing tasks, 
+for performance &amp; efective resource usage. For it's goals Arachnod uses <a href="http://www.redis.io">Redis</a>'s power as a backend. 
+Covering all heavy &amp; time consuming tasks such as controlling urls &amp; their tasks to store &amp; distribute information among the Arachnod's child tasks 
+(Spiderlings). Arachnod also avoids to use any server-side DOM requiring technics 
+such as <a href="http://www.jquery.com">jQuery</a> with <a href="https://github.com/tmpvar/jsdom">JSdom</a> to use resources properly. 
+Frankly tested JSdom for along time with no luck, always memory leaks &amp; high memory usage. 
+Libxml based XPath solutions were not actually real. Arachnod uses <a href="http://cheeriojs.github.io/cheerio/">Cheerio</a> for accessing DOM elements. 
+Also uses <a href="https://github.com/visionmedia/superagent">SuperAgent</a> as HTTP Client. </p>
+
+<h6>
+<a id="how-to-install" class="anchor" href="#how-to-install" aria-hidden="true"><span class="octicon octicon-link"></span></a>How to install</h6>
+
+<ul>
+<li><p>via NPM 
+<code>npm install arachnod</code></p></li>
+<li><p>via Git 
+<code>git clone https://github.com/risyasin/arachnod.git</code></p></li>
+</ul>
+
+<h6>
+<a id="how-to-use" class="anchor" href="#how-to-use" aria-hidden="true"><span class="octicon octicon-link"></span></a>How to use</h6>
+
+<div class="highlight highlight-js"><pre>
+    <span class="pl-s">var</span> bot <span class="pl-k">=</span> <span class="pl-s3">require</span>(<span class="pl-s1"><span class="pl-pds">'</span>arachnod<span class="pl-pds">'</span></span>);
+
+    bot.crawl({
+        <span class="pl-s1"><span class="pl-pds">'</span>redis<span class="pl-pds">'</span></span><span class="pl-k">:</span> <span class="pl-s1"><span class="pl-pds">'</span>localhost<span class="pl-pds">'</span></span>,
+        <span class="pl-s1"><span class="pl-pds">'</span>parallel<span class="pl-pds">'</span></span><span class="pl-k">:</span> <span class="pl-c1">4</span>,
+        <span class="pl-s1"><span class="pl-pds">'</span>start<span class="pl-pds">'</span></span><span class="pl-k">:</span> <span class="pl-s1"><span class="pl-pds">'</span>https://www.npmjs.com/package/arachnod<span class="pl-pds">'</span></span>,
+        <span class="pl-s1"><span class="pl-pds">'</span>verbose<span class="pl-pds">'</span></span><span class="pl-k">:</span> <span class="pl-c1">1</span>,
+        <span class="pl-s1"><span class="pl-pds">'</span>ignorePaths<span class="pl-pds">'</span></span><span class="pl-k">:</span> [<span class="pl-s1"><span class="pl-pds">'</span>/list-of-paths/should-be-ignored<span class="pl-pds">'</span></span>],
+        <span class="pl-s1"><span class="pl-pds">'</span>resume<span class="pl-pds">'</span></span><span class="pl-k">:</span> <span class="pl-c1">false</span>
+    });
+
+    bot.on(<span class="pl-s1"><span class="pl-pds">'</span>hit<span class="pl-pds">'</span></span>, <span class="pl-st">function</span> (<span class="pl-vpf">doc</span>, <span class="pl-vpf">$</span>) {
+        <span class="pl-c">/* $ is JQuery like Cheerio object that provides access to DOM*/</span>
+        <span class="pl-c">/* doc contains task information &amp; headers of hit. */</span>
+        <span class="pl-en">console</span><span class="pl-s3">.log</span>($(<span class="pl-s1"><span class="pl-pds">'</span>#readme p<span class="pl-pds">'</span></span>).<span class="pl-sc">text</span>());
+        <span class="pl-en">console</span><span class="pl-s3">.log</span>($(<span class="pl-s1"><span class="pl-pds">'</span>#readme a<span class="pl-pds">'</span></span>).<span class="pl-sc">text</span>());
+    });
+
+    bot.on(<span class="pl-s1"><span class="pl-pds">'</span>error<span class="pl-pds">'</span></span>, <span class="pl-st">function</span> (<span class="pl-vpf">err</span>, <span class="pl-vpf">task</span>) {
+        <span class="pl-en">console</span><span class="pl-s3">.log</span>([<span class="pl-s1"><span class="pl-pds">'</span>arachnod error:<span class="pl-pds">'</span></span>, task]);
+    });
+
+    bot.on(<span class="pl-s1"><span class="pl-pds">'</span>end<span class="pl-pds">'</span></span>, <span class="pl-st">function</span> (<span class="pl-vpf">err</span>, <span class="pl-vpf">status</span>) {
+        <span class="pl-en">console</span><span class="pl-s3">.log</span>([<span class="pl-s1"><span class="pl-pds">'</span>arachnod tasks ended:<span class="pl-pds">'</span></span>, err, status]);
+    });</pre></div>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Arachnod maintained by <a href="https://github.com/risyasin">risyasin</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+              <script type="text/javascript">
+            var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+            document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+          </script>
+          <script type="text/javascript">
+            try {
+              var pageTracker = _gat._getTracker("UA-25703095-2");
+            pageTracker._trackPageview();
+            } catch(err) {}
+          </script>
+
+
+  </body>
+</html>
