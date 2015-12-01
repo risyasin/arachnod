@@ -2,8 +2,8 @@
 
 var redis   = require('redis'),
     child   = require('child_process'),
-    events  = require('events'),
     cheerio = require('cheerio'),
+    ee2     = require('eventemitter2').EventEmitter2,
     log     = require('logging').from(__filename),
     _       = require('lodash'),
     url     = require('url'),
@@ -23,12 +23,17 @@ var redis   = require('redis'),
         'resume': false,
         'sameDomain': true,
         'useCookies': true
-    };
+    },
+    Arch = new ee2({
+        wildcard: false,
+        newListener: false,
+        maxListeners: 20
+    });
 
-var Arch = _.extend({}, events.EventEmitter);
 
 
 Arch.checkAnchor = function (anchor, taskp) {
+
     if (!!anchor.attribs.href){
         var href = anchor.attribs.href,
             urlp = url.parse(href),
@@ -180,7 +185,7 @@ Arch.crawl = function (userParams) {
 
 };
 
-process.on("uncaughtException", function (err) {
+process.on('uncaughtException', function (err) {
     log(err.stack);
 });
 
