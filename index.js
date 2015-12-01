@@ -1,17 +1,14 @@
 "use strict";
 
-var redis   = require("redis"),
+var redis   = require('redis'),
     child   = require('child_process'),
-    Event   = require("eventemitter2").EventEmitter2,
-    Url     = require("url"),
-    cheerio = require("cheerio"),
-    _       = require("underscore"),
-    defKey  = process.cwd().split("/").slice(-1) || 'arachnod',
-    Arch = new Event({
-        delimiter: '::',
-        newListener: false,
-        maxListeners: 20
-    }),
+    events  = require('events'),
+    cheerio = require('cheerio'),
+    log     = require('logging').from(__filename),
+    _       = require('lodash'),
+    url     = require('url'),
+    qs      = require('querystring'),
+    defKey  = process.cwd().split('/').slice(-1) || 'arachnod',
     status  = 'init',
     startTime =  Date.now(),
     stats =  { 'added': 0, 'downloaded': 0, 'canceled': 0, 'ignored': 0, 'finished': 0, 'retry': 0, 'failed': 0 },
@@ -28,6 +25,48 @@ var redis   = require("redis"),
         'useCookies': true
     };
 
+var Arch = _.extend({}, events.EventEmitter);
+
+
+Arch.checkAnchor = function (anchor, taskp) {
+    if (!!anchor.attribs.href){
+        var href = anchor.attribs.href,
+            urlp = url.parse(href),
+            queue = true;
+
+
+        // Not the same domain
+        if (urlp.host !== taskp.host){ queue = false; }
+
+        // ignore path. recursively.
+        if (!_.isNull(urlp.path) && params.ignorePaths.length > 0){
+            _.each(params.ignorePaths, function (ignp) {
+                if (String(urlp.path.substr(0, ignp.length)) === String(ignp)){ queue = false; }
+            });
+        }
+
+        urlp.qsp = qs.parse(urlp.query);
+
+        // ignored qs parameter.
+        if (!_.isNull(urlp.query) && params.ignoreParams.length > 0){
+            _.each(params.ignoreParams, function (ipg) {
+                urlp.qsp = _.omit(urlp.qsp, ipg);
+            });
+            var tqs = qs.stringify(urlp.qsp);
+            // rebuild href without ignoredParams.
+            if (urlp.query !== tqs){
+                href = urlp.protocol+'//'+urlp.host+urlp.pathname+(tqs.length>0?'?'+tqs:'');
+            }
+        }
+
+        if (queue){
+            Arch.queue({"url": href});
+            stats.added++;
+            if (params.verbose > 8){ log(['queue url', href, urlp.path]); }
+        }
+    }
+
+};
 
 Arch.processHit = function (task, result) {
     if (!!result && !!task && !!task.url && result.status === 200){
@@ -36,26 +75,14 @@ Arch.processHit = function (task, result) {
             // only text/html will be downloaded!
             if (result.headers['content-type'].slice(0,9) !== 'text/html'){ throw 'cancelUrl'; }
             var $ = cheerio.load(result.text),
-                taskp = Url.parse(task.url),
-                doc = {
-                    "url": task.url,
-                    "parsed": taskp,
-                    "headers": result.headers
-                };
+                taskp = url.parse(task.url),
+                doc = { "url": task.url, "headers": result.headers };
+
+            taskp.qsp = qs.parse(taskp.query);
+            _.assign(doc, taskp);
             // loop links
             // @TODO: parse JS links with window.location
-            _.each($("a"), function (item) {
-                if (!!item.attribs.href){
-                    var href = item.attribs.href, urlp = Url.parse(href);
-                    if (urlp.host === taskp.host){ // same domain
-                        if (_.indexOf(params.ignorePaths, urlp.path) === -1) {
-                            Arch.queue({"url": href});
-                            stats.added++;
-                            if (params.verbose > 8){ console.log(['queue url', href, urlp.path]); }
-                        }
-                    }
-                }
-            });
+            _.each($('a'), function (anchor) { Arch.checkAnchor(anchor,  taskp); });
             stats.finished++;
             Arch.emit('hit', doc, $);
 
@@ -64,29 +91,29 @@ Arch.processHit = function (task, result) {
                 Arch.queue(task);
                 stats.retry++;
             } else if (e === 'cancelUrl') {
-                if (params.verbose > 5){ console.log(['canceled', task]); }
+                if (params.verbose > 5){ log(['canceled', task]); }
                 stats.canceled++;
             } else if (e === 'ignoreUrl') {
-                if (params.verbose > 5){ console.log(['ignored', task]); }
+                if (params.verbose > 5){ log(['ignored', task]); }
                 stats.ignored++;
             } else {
                 stats.failed++;
-                console.log(['processHit failed', task]);
+                log(['processHit failed', task]);
                 Arch.emit('error', task, e);
             }
             //Arch.taskRetry(task, result.res.statusCode);
         } finally {
-            Arch.statsLog();
+            Arch.emit('stats', Arch.stats());
         }
     } else {
         if (!!task){ Arch.queue(task); }
     }
 };
 
-Arch.statsLog = function () {
-    stats.mem = Math.ceil((process.memoryUsage().rss/1024)/1024) + ' Mb';
+Arch.stats = function () {
+    stats.mem = Math.ceil((process.memoryUsage().rss/1024)/1024) + ' M';
     stats.children = spiderlings.length;
-    Arch.emit('stats', stats);
+    return stats;
 };
 
 Arch.queue = function (taskData) {
@@ -105,7 +132,7 @@ Arch.resetQueues = function (cb) {
         if (err) { throw err; }
         Arch.rc.del(finished, function (err, rf) {
             if (err) { throw err; }
-            console.log('Previous task canceled! ' + rt + ' - ' + rf);
+            log('Previous task canceled! ' + rt + ' - ' + rf);
             cb();
         });
     });
@@ -132,11 +159,11 @@ Arch.crawl = function (userParams) {
                 Arch.emit('end', stats);
             }
         }
-        //console.log('Tasks: '+ Arch.rc.scard(tasks) + ' Finished: ' + Arch.rc.scard(finished));
-        //console.log(msg);
+        //log('Tasks: '+ Arch.rc.scard(tasks) + ' Finished: ' + Arch.rc.scard(finished));
+        //log(msg);
     },
     initiate = function () {
-        console.log('Started to crawl: ' + params.start + ' at ' + startTime);
+        log('Started to crawl: ' + params.start + ' at ' + startTime);
         Arch.queue({'url': params.start});
         for(var i = 0; i<params.parallel; i++) {
             spiderlings[i] = child.fork(__dirname + '/spiderling.js', [params.redis, tasks, finished, params.verbose]);
@@ -154,7 +181,7 @@ Arch.crawl = function (userParams) {
 };
 
 process.on("uncaughtException", function (err) {
-    console.log(err.stack);
+    log(err.stack);
 });
 
 module.exports = Arch;

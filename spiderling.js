@@ -1,17 +1,15 @@
 "use strict";
 
 var ps      = process.argv.splice(2),
-    redis   = require("redis"),
-    Agent   = require("superagent"),
-    Url     = require("url"),
-    _       = require("underscore"),
+    Agent   = require('superagent'),
+    Url     = require('url'),
+    log     = require('logging').from(__filename),
+    _       = require('lodash'),
     rs      = ps[0],
-    status  = "init",
     tasks   = ps[1],
     finished = ps[2],
     verbosity = ps[3] || 0,
-    nullCounter = 0,
-    rc      = redis.createClient(6379, rs),
+    rc      = require('redis').createClient(6379, rs),
     cfg = {
         "userAgents": {
             "googlebot": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
@@ -38,90 +36,141 @@ var ps      = process.argv.splice(2),
             "Pragma": "no-cache",
             "Expires": 0
         }
-    },
-    getTask = function (cb) {
-        rc.spop(tasks, function (err, task) {
-            if (verbosity > 3){ console.dir(['gottask', task]); }
-            if (task !== null){
-                nullCounter = 0;
-                status = 'gottask';
-                task = JSON.parse(task);
-                cb(task);
-            } else {
-                if (nullCounter === 20) {
-                    process.send({'cmd': 'exit', 'pid': process.pid});
-                    setTimeout(process.exit, 500);
-                } else {
-                    status = 'idle';
-                    if (verbosity > 5){ console.dir(['status', status]); }
-                    setTimeout(run, 500);
-                    nullCounter++;
-                }
-            }
-        });
-    },
-    checkTasks = function () {
-        rc.scard(tasks, function (err, tl) {
-            rc.scard(finished, function (err, fl) {
-                //console.log(['scard task', err, tl]);
-                process.send({'cmd':'stat'});
-                if (verbosity > 5){ console.dir(['queue', 'fin: ' + fl, 't: ' + tl]); }
-                if (tl>0){ setTimeout(run, 500); }
-            });
-        });
-    },
-    getUrl = function (task, cb) {
-        status = 'downloading';
-        if (verbosity > 5){ console.dir(['status', status, task.url]); }
-        // firefox
-        cfg.headers['User-Agent'] = cfg.userAgents.chrome;
-        Agent.get(task.url)
-            .set(cfg.headers)
-            .end(function(result){
-                if (verbosity > 5){ console.dir(['downloaded', task.url]); }
-                cb(null, task, result);
-                result = null;
-            });
-    },
-    taskRetry = function (task, code) {
-        task.lastResponse = code;
-        if (task.retry){ task.retry++; } else { task.retry = 1; }
-        setTimeout(function () {
-            getUrl(task, processResponse);
-        }, 10000);
-    },
-    processResponse = function (err, task, result) {
-        if (err){
-            process.send({'error': err});
-            status = 'retrying';
-            taskRetry(task);
-        } else {
-            if (verbosity > 5){ console.dir(['processing', task.url, result.statusCode]); }
-            process.send({
-                'cmd': 'hit',
-                'task': task,
-                'result': {
-                    'path': result.req.path,
-                    'status': result.statusCode,
-                    'headers': result.headers,
-                    'text': result.text
-            }});
-            finish(task);
-        }
-    },
-    run = function () {
-        getTask(function (task) {
-            if (typeof task !== 'undefined' && task.url){
-                getUrl(task, processResponse);
-            }
-        });
-    },
-    finish = function (taskData) {
-        if (taskData.url){
-            rc.sadd(finished, JSON.stringify(taskData));
-            checkTasks();
-        }
     };
+
+
+/**
+ * Task fetcher from redis.
+ * @param cb
+ */
+function getTask(cb) {
+    rc.spop(tasks, function (err, task) {
+        if (verbosity > 3){ log(['gottask', task]); }
+        if (!_.isNull(task)){
+            getTask.retry = 0;
+            run.status = 'gottask';
+            task = JSON.parse(task);
+            cb(task);
+        } else {
+            if (getTask.retry === 20) {
+                process.send({'cmd': 'exit', 'pid': process.pid});
+                setTimeout(process.exit, 500);
+                log(process.pid + ' will exit in 500 -- STOP');
+            } else {
+                run.status = 'idle';
+                if (verbosity > 5){ log(['status', run.status]); }
+                setTimeout(run, 500);
+                log(process.pid + ' will re-run in 500');
+                getTask.retry++;
+            }
+        }
+    });
+}
+
+// retry count, when limit reached child dies.
+getTask.retry = 0;
+
+
+/**
+ * Task checker
+ */
+function checkTasks() {
+    rc.scard(tasks, function (err, tl) {
+        rc.scard(finished, function (err, fl) {
+            process.send({'cmd':'stat'});
+            if (verbosity > 5){ log(['queue', 'fin: ' + fl, 't: ' + tl]); }
+            if (tl>0){ setTimeout(run, 500); }
+        });
+    });
+}
+
+
+/**
+ * Url fetcher
+ * @param task
+ * @param cb
+ */
+function getUrl(task, cb) {
+    run.status = 'downloading';
+    if (verbosity > 5){ log(['status', run.status, task.url]); }
+    cfg.headers['User-Agent'] = _.sample(cfg.userAgents.chrome, 1);
+    Agent.get(task.url)
+        .set(cfg.headers)
+        .end(function(result){
+            if (verbosity > 5){ log(['downloaded', task.url, result.headers['content-type']]); }
+            if (result.headers['content-type'].slice(0,9) === 'text/html'){
+                cb(null, task, result);
+            }
+            result = null;
+        });
+}
+
+/**
+ * Task retry implementation.
+ * @param task
+ * @param code
+ */
+function taskRetry(task, code) {
+    task.lastResponse = code;
+    if (task.retry){ task.retry++; } else { task.retry = 1; }
+    setTimeout(function () {
+        getUrl(task, processResponse);
+    }, 10000);
+}
+
+
+/**
+ * Response handler. capture everything it needs then send it to parent.
+ * @param err
+ * @param task
+ * @param result
+ */
+function processResponse(err, task, result) {
+    if (err){
+        process.send({'error': err});
+        run.status = 'retrying';
+        taskRetry(task);
+    } else {
+        if (verbosity > 5){ log(['processing', task.url, result.statusCode]); }
+        process.send({
+            'cmd': 'hit',
+            'task': task,
+            'result': {
+                'path': result.req.path,
+                'status': result.statusCode,
+                'headers': result.headers,
+                'text': result.text
+        }});
+        finish(task);
+    }
+}
+
+
+/**
+ * Run fn to control retries & init
+ */
+function run() {
+    getTask(function (task) {
+        if (!_.isUndefined(task) && task.url){
+            getUrl(task, processResponse);
+        }
+    });
+}
+
+// first state.
+run.status = 'init';
+
+
+/**
+ * Task finish handler
+ * @param taskData
+ */
+function finish(taskData) {
+    if (taskData.url){
+        rc.sadd(finished, JSON.stringify(taskData));
+        checkTasks();
+    }
+}
 
 
 process.on('message', function (msg) {
@@ -135,6 +184,6 @@ process.on('disconnect', function() {
     process.exit(0);
 });
 
-process.on("uncaughtException", function (err) {
+process.on('uncaughtException', function (err) {
     console.log(err.stack);
 });
