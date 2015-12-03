@@ -2,13 +2,13 @@
 
 var ps      = process.argv.splice(2),
     Agent   = require('superagent'),
-    Url     = require('url'),
-    log     = require('logging').from(__filename),
+    log     = require('./logging').from(__filename),
     _       = require('lodash'),
     rs      = ps[0],
     tasks   = ps[1],
     finished = ps[2],
     verbosity = ps[3] || 0,
+    retry   = 0,
     rc      = require('redis').createClient(6379, rs),
     cfg = {
         "userAgents": {
@@ -45,42 +45,21 @@ var ps      = process.argv.splice(2),
  */
 function getTask(cb) {
     rc.spop(tasks, function (err, task) {
-        if (verbosity > 3){ log(['gottask', task]); }
+        if (err){ log('getTask', err); }
+        if (verbosity > 3){ log('gottask', process.pid, task); }
         if (!_.isNull(task)){
-            getTask.retry = 0;
+            retry = 0;
             run.status = 'gottask';
             task = JSON.parse(task);
             cb(task);
         } else {
-            if (getTask.retry === 20) {
-                process.send({'cmd': 'exit', 'pid': process.pid});
-                setTimeout(process.exit, 500);
-                log(process.pid + ' will exit in 500 -- STOP');
-            } else {
-                run.status = 'idle';
-                if (verbosity > 5){ log(['status', run.status]); }
-                setTimeout(run, 500);
-                log(process.pid + ' will re-run in 500');
-                getTask.retry++;
-            }
+            run.status = 'idle';
+            if (verbosity > 5){ log('status', process.pid, run.status); }
+            setTimeout(run, 200);
+            retry++;
+
+
         }
-    });
-}
-
-// retry count, when limit reached child dies.
-getTask.retry = 0;
-
-
-/**
- * Task checker
- */
-function checkTasks() {
-    rc.scard(tasks, function (err, tl) {
-        rc.scard(finished, function (err, fl) {
-            process.send({'cmd':'stat'});
-            if (verbosity > 5){ log(['queue', 'fin: ' + fl, 't: ' + tl]); }
-            if (tl>0){ setTimeout(run, 500); }
-        });
     });
 }
 
@@ -93,15 +72,20 @@ function checkTasks() {
 function getUrl(task, cb) {
     run.status = 'downloading';
     if (verbosity > 5){ log(['status', run.status, task.url]); }
-    cfg.headers['User-Agent'] = _.sample(cfg.userAgents.chrome, 1);
+    _.extend(cfg.headers, {
+        'User-Agent': _.sample(cfg.userAgents.chrome, 1),
+        'X-Requested-With': 'XMLHttpRequest',
+        'Expires':'-1',
+        'Cache-Control': 'no-cache,no-store,must-revalidate,max-age=-1,private'
+    });
+
     Agent.get(task.url)
         .set(cfg.headers)
-        .end(function(result){
+        .timeout(5000)
+        .on('error', function (err) { process.send({'cmd':'error','error': err,'url': task.url}); })
+        .end(function(err, result){
             if (verbosity > 5){ log(['downloaded', task.url, result.headers['content-type']]); }
-            if (result.headers['content-type'].slice(0,9) === 'text/html'){
-                cb(null, task, result);
-            }
-            result = null;
+            cb(err, task, result);
         });
 }
 
@@ -113,9 +97,15 @@ function getUrl(task, cb) {
 function taskRetry(task, code) {
     task.lastResponse = code;
     if (task.retry){ task.retry++; } else { task.retry = 1; }
-    setTimeout(function () {
-        getUrl(task, processResponse);
-    }, 10000);
+    if (task.retry > 5){
+        run.status = 'aborted';
+        process.send({'cmd':'error','error': 'task aborted', 'task': task });
+    } else {
+        run.status = 'retrying 2';
+        setTimeout(function () {
+            getUrl(task, processResponse);
+        }, 500);
+    }
 }
 
 
@@ -127,11 +117,12 @@ function taskRetry(task, code) {
  */
 function processResponse(err, task, result) {
     if (err){
-        process.send({'error': err});
+        process.send({'cmd': 'error', 'error': err});
         run.status = 'retrying';
-        taskRetry(task);
+        taskRetry(task, result.status);
     } else {
-        if (verbosity > 5){ log(['processing', task.url, result.statusCode]); }
+        run.status = 'processing';
+        if (verbosity > 5){ log('processing', task.url, result.statusCode); }
         process.send({
             'cmd': 'hit',
             'task': task,
@@ -163,15 +154,27 @@ run.status = 'init';
 
 /**
  * Task finish handler
- * @param taskData
+ * @param task
  */
-function finish(taskData) {
-    if (taskData.url){
-        rc.sadd(finished, JSON.stringify(taskData));
-        checkTasks();
+function finish(task) {
+    if (task.url){
+        run.status = 'finished-last';
+        rc.sadd(finished, JSON.stringify(task));
+        setTimeout(run, 200);
     }
 }
 
+
+// Idle checker
+setInterval(function () {
+    if (retry > 20) {
+        process.send({'cmd': 'exit', 'pid': process.pid});
+        process.exit(0);
+    }
+}, 100);
+
+
+process.send({'cmd':'ready', 'pid': process.pid});
 
 process.on('message', function (msg) {
     if (msg.cmd && msg.cmd === 'run'){
@@ -185,5 +188,5 @@ process.on('disconnect', function() {
 });
 
 process.on('uncaughtException', function (err) {
-    console.log(err.stack);
+    process.send({'cmd':'error', 'error': err});
 });
