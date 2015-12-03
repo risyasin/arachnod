@@ -42,6 +42,7 @@ bot.on('hit', function (doc, $) {
     
 });
 
+
 bot.crawl({
     'redis': '127.0.0.1',
     'parallel': 4,
@@ -55,11 +56,6 @@ bot.on('error', function (err, task) {
 });
 
 
-bot.on('stats', function (err, stats) {
-    //log('Bot stats:', err, stats);
-});
-
-
 bot.on('end', function (err, status) {
     log('Bot finished:', err, status);
 });
@@ -68,9 +64,11 @@ bot.on('end', function (err, status) {
 
 ### Documentation 
 
+
 ##### Parameters
 Parameter Name  | Description
 ------------- | -------------
+**start** | Start url for crawling (Mandatory) 
 **parallel** | Number of child processes that will handle network tasks (Default: 8) Do not this more than 20. 
 **redis** | Host name or IP address that Redis runs on (Default: 127.0.0.1)
 **redisPort**  | Port number for Redis (Default: 6379)
@@ -83,6 +81,8 @@ Parameter Name  | Description
 **obeyRobotsTxt**  | As it's name says. Honors the robots.txt (will be implemented at v0.5) 
  
 
+
+
 ##### Events
 Event Name  | Description
 ------------- | -------------
@@ -90,6 +90,8 @@ Event Name  | Description
 **error**  | Emits when an error occurs at any level including child processes. Single parameter Error or Exception.  
 **end**  | Emits when reached at the end of tasks queue. Return statistics.  
 **stats**  | Emits bot stats whenever a child changes it's states (such as downloading or querying queues). Use wisely.  
+
+
 
 
 ##### Methods
@@ -100,6 +102,8 @@ Method Name  | Description
 **resume()**  | Starts back a paused session. Useful to control resource usage in low spec systems (single core etc.). 
 **queue(url)**  | Adds given url to task queue. 
 **getStats()**  | Returns various statistics such as downloaded, checked, finished url counts, memory size etc. 
+ 
+
  
  
 ##### What's Next
@@ -112,6 +116,8 @@ Method Name  | Description
 * Free-Ride mode (will be fun)
 * Stats for each download/hit event
 * Plugin support
+
+
 
 #### Support 
 If you love to use Arachnod. Help me to improve it. 
