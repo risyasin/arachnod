@@ -22,7 +22,7 @@
         child   = require('child_process'),
         cheerio = require('cheerio'),
         ee2     = require('eventemitter2').EventEmitter2,
-        log     = require('./logging').from('arachnod'),
+        log     = require('logging').from('arachnod'),
         _       = require('lodash'),
         url     = require('url'),
         qs      = require('querystring'),

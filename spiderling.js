@@ -2,7 +2,7 @@
 
 var ps      = process.argv.splice(2),
     Agent   = require('superagent'),
-    log     = require('./logging').from(__filename),
+    log     = require('logging').from(__filename),
     _       = require('lodash'),
     rs      = ps[0],
     tasks   = ps[1],
