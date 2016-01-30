@@ -16,17 +16,17 @@
  */
 "use strict";
 
+var redis   = require('redis'),
+    child   = require('child_process'),
+    cheerio = require('cheerio'),
+    ee2     = require('eventemitter2').EventEmitter2,
+    log     = require('logging').from('arachnod'),
+    _       = require('lodash'),
+    url     = require('url'),
+    qs      = require('querystring');
+
 (function () {
-    
-    var redis   = require('redis'),
-        child   = require('child_process'),
-        cheerio = require('cheerio'),
-        ee2     = require('eventemitter2').EventEmitter2,
-        log     = require('logging').from('arachnod'),
-        _       = require('lodash'),
-        url     = require('url'),
-        qs      = require('querystring'),
-        defKey  = process.cwd().split('/').slice(-1) || 'arachnod',
+        var defKey  = process.cwd().split('/').slice(-1) || 'arachnod',
         status  = 'init',
         startTime =  process.hrtime(),
         spiderlings = [],
@@ -371,5 +371,5 @@ Arachnod.stats =  {
 }());
 
 process.on('uncaughtException', function (err) {
-    console.log(err);
+    log('uncaughtException:', err, err.stack);
 });

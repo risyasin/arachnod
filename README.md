@@ -52,12 +52,12 @@ bot.crawl({
 
 
 bot.on('error', function (err, task) {
-    log('Bot error:', err, err.stack, task);
+    console.log('Bot error:', err, err.stack, task);
 });
 
 
 bot.on('end', function (err, status) {
-    log('Bot finished:', err, status);
+    console.log('Bot finished:', err, status);
 });
 ```
 
