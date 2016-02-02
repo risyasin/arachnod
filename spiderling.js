@@ -82,7 +82,7 @@ function getUrl(task, cb) {
     Agent.get(task.url)
         .set(cfg.headers)
         .timeout(5000)
-        .on('error', function (err) { process.send({'cmd':'error','error': err,'url': task.url}); })
+        .on('error', function (err) { process.send({'cmd':'error','error': err,'task': task}); })
         .end(function(err, result){
             if (verbosity > 5){ log(['downloaded', task.url, result.headers['content-type']]); }
             cb(err, task, result);
@@ -117,7 +117,7 @@ function taskRetry(task, code) {
  */
 function processResponse(err, task, result) {
     if (err){
-        process.send({'cmd': 'error', 'error': err});
+        process.send({'cmd': 'error', 'error': err, 'task': task});
         run.status = 'retrying';
         taskRetry(task, result.status);
     } else {

@@ -1,29 +1,34 @@
 
 
-var bot = require('../index.js');
+var bot = require('../index.js'),
+    _ = require('lodash'),
+    log = console.log;
 
 bot.crawl({
     'redis': 'localhost',
-    'parallel': 4,
-    'start': 'http://www.pocu.eu/',
+    'parallel': 2,
     //'start': 'https://www.npmjs.com/package/arachnod',
+    'start': 'http://doc.gitlab.com/ce/api/',
     'verbose': 1,
-    'ignorePaths': ['/list-of-paths/should-be-ignored'],
     'resume': false
 });
 
-bot.on('hit', function (doc, $) {
+
+var myHit = function (doc, $) {
     /* $ is JQuery like Cheerio object that provides access to DOM*/
     /* doc contains task information & headers of hit. */
-    console.log($('#readme p').text());
-});
+    // console.log($('h1.package-name').text().replace(/\r|\n|\t/g,'') + $('li.last-publisher').text().replace(/\r|\n|\t/g,''));
 
-bot.on('stats', function (task) {
-    console.log(['arachnod stat:', task]);
-});
+
+    _.each($('pre.shell > code'), function (el) {
+        // log('el:', el.text());
+    })
+};
+
+bot.on('hit', myHit);
 
 bot.on('error', function (err, task) {
-    console.log(['arachnod error:', task]);
+    console.log(['arachnod error:', err, task]);
 });
 
 bot.on('end', function (err, status) {

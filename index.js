@@ -40,7 +40,9 @@ var redis   = require('redis'),
             'resume': false,
             'sameDomain': true,
             'useCookies': true,
-            'obeyRobotsTxt': false
+            'obeyRobotsTxt': false,
+            'ignorePaths': [],
+            'ignoreParams': []
         };
 
 
@@ -83,6 +85,11 @@ Arachnod.stats =  {
      * @param taskp
      */
     function checkUrl(tag, taskp) {
+        var lastPart = function (str, add) {
+            var cur = str.substr(0, (str.lastIndexOf('/')+1));
+            if (_.isNull(cur)){ cur = '/'; }
+            return  cur + add;
+        };
         if (!!tag.attribs.href){
             var href = tag.attribs.href,
                 urlp = url.parse(href),
@@ -92,12 +99,19 @@ Arachnod.stats =  {
             if (_.indexOf(Arachnod.urlCache, href) !== -1){ return null; }
 
             // relative links
-            if (_.isNull(urlp.protocol) && _.isNull(urlp.host)){
+            if (!/^(?:[a-z]+:)?\/\//i.test(href)){
                 urlp.protocol = taskp.protocol;
                 urlp.host = taskp.host;
                 urlp.hostname = taskp.hostname;
-                href = urlp.protocol+'//'+urlp.host+urlp.pathname;
+
+                href = urlp.protocol+'//'+urlp.host + lastPart(taskp.pathname, href);
             }
+
+            //log(href, !/^(?:[a-z]+:)?\/\//i.test(href), urlp, tag);
+
+
+
+            //log('urlp, href', href, taskp, urlp);
 
             // Not the same domain
             if (urlp.host !== taskp.host){ queue = false; }
@@ -118,18 +132,18 @@ Arachnod.stats =  {
                 _.each(params.ignoreParams, function (ipg) {
                     urlp.qsp = _.omit(urlp.qsp, ipg);
                 });
-                var tqs = qs.stringify(urlp.qsp);
+                var tqs = qs.stringify(urlp.qsp) || [];
                 // rebuild href without ignoredParams.
                 if (urlp.query !== tqs){
                     href = urlp.protocol+'//'+urlp.host+urlp.pathname+(tqs.length>0?'?'+tqs:'');
                 }
             }
 
-            if (queue){
+            if (queue && !_.isNull(urlp.path)){
                 Arachnod.queue({"url": href});
                 Arachnod.urlCache.push(href);
                 Arachnod.urlCache = _.uniq(Arachnod.urlCache);
-                if (params.verbose > 8){ log('queue url', href, urlp.path); }
+                if (params.verbose > 8){ log('queue url', Arachnod.urlCache.length, href, urlp.path); }
             } else {
                 Arachnod.stats.ignored++;
             }
@@ -238,7 +252,7 @@ Arachnod.stats =  {
                 _.assign(doc, taskp);
                 // loop links
                 // @TODO: parse JS links with window.location
-                _.each($('a'), function (tag) { checkUrl(tag,  taskp); });
+                _.each($('a'), function (tag) { checkUrl(_.omit(tag, ['parent', 'prev', 'next']),  taskp); });
                 Arachnod.stats.finished++;
                 Arachnod.emit('hit', doc, $);
 
@@ -254,8 +268,7 @@ Arachnod.stats =  {
                     Arachnod.stats.ignored++;
                 } else {
                     Arachnod.stats.failed++;
-                    log('processHit failed', task);
-                    Arachnod.emit('error', task, e);
+                    Arachnod.emit('error', [task, e, (!_.isUndefined(e.stack)?e.stack:'none')]);
                 }
                 //Arachnod.taskRetry(task, result.res.statusCode);
             } finally {
