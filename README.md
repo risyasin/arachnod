@@ -76,8 +76,9 @@ Parameter Name  | Description
 **resume**  | Resume support, Simply, does not resets queues if there is any. (Default: false) 
 **ignorePaths**  | Ignores paths starts with. Must be multiple in array syntax such as `['/blog','/gallery']` 
 **ignoreParams**  | Ignores query string parameters, Must be in array syntax. such as `['color','type']`  
-**sameDomain**  | Stays in the same hostname. (will be implemented at v1)
-**useCookies**  | Using cookies (will be implemented at v0.4)
+**sameDomain**  | Stays in the same hostname. (implemented as of 0.4.4)
+**useCookies**  | Using cookies (implemented at 0.4.4 as **cookie** parameter)
+**basicAuth**  | Provide basic authentication credentials. `user:pass` 
 **obeyRobotsTxt**  | As it's name says. Honors the robots.txt (will be implemented at v0.5) 
  
 
@@ -126,7 +127,7 @@ Feel free to make pull request for anything useful.
 
 #### License
 
-Copyright 2015 yasin inat
+Copyright 2015-17 yasin inat
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
