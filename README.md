@@ -114,15 +114,14 @@ Method Name  | Description
 * Actions for content-type or any given response headers 
 * Custom headers
 * Custom POST/PUT method queues
-* Free-Ride mode (will be fun)
+* ~~Free-Ride mode (will be fun)~~ Probably not useful.
 * Stats for each download/hit event
 * Plugin support
 
 
 
 #### Support 
-If you love to use Arachnod. Help me to improve it. 
-Feel free to make pull request for anything useful. 
+If you like Arachnod, Help me to improve it.
 
 
 #### License
