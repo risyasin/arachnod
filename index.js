@@ -41,6 +41,8 @@ var redis   = require('redis'),
             'sameDomain': true,
             'useCookies': true,
             'obeyRobotsTxt': false,
+            'auth': null,
+            'cookie': null,
             'ignorePaths': [],
             'ignoreParams': []
         };
@@ -160,6 +162,10 @@ Arachnod.stats =  {
         if (!!msg.cmd && msg.cmd === 'hit'){
             processHit(msg.task, msg.result);
             getCounts();
+        }
+
+        if (!!msg.cmd && msg.cmd === 'cookie'){
+            console.log('got cookie', msg);
         }
 
         if (!!msg.cmd && msg.cmd === 'error'){
