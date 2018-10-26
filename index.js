@@ -16,22 +16,35 @@
  */
 "use strict";
 
-var redis   = require('redis'),
-    child   = require('child_process'),
+var child   = require('child_process'),
     cheerio = require('cheerio'),
-    ee2     = require('eventemitter2').EventEmitter2,
+    Emitter = require("events").EventEmitter,
     log     = require('logging').from('arachnod'),
+    Redis   = require('redis'),
     _       = require('lodash'),
     url     = require('url'),
     qs      = require('querystring');
 
 (function () {
-        var defKey  = process.cwd().split('/').slice(-1) || 'arachnod',
+
+    var defKey  = process.cwd().split('/').slice(-1) || 'arachnod',
         status  = 'init',
         startTime =  process.hrtime(),
         spiderlings = [],
         tasks = defKey + '_tasks',
         finished = defKey + '_finished',
+        urlCache = [],
+        redis = null,
+        ended = false,
+        stats =  {
+            'linkCount': 0,
+            'downloaded': 0,
+            'canceled': 0,
+            'ignored': 0,
+            'finished': 0,
+            'retry': 0,
+            'failed': 0
+        },
         params = {
             'redis': '127.0.0.1',
             'redisPort': 6379,
@@ -56,26 +69,7 @@ var redis   = require('redis'),
  * @property {array} spiderlings parallel childs collector
  * @property {object} stats Stats inforrmation
  */
-var Arachnod = new ee2({
-    wildcard: false,
-    newListener: false,
-    maxListeners: 20
-});
-
-// Url cache can be exposed.
-Arachnod.urlCache = [];
-Arachnod.ended = false;
-
-
-Arachnod.stats =  {
-    'linkCount': 0,
-    'downloaded': 0,
-    'canceled': 0,
-    'ignored': 0,
-    'finished': 0,
-    'retry': 0,
-    'failed': 0
-};
+var Arachnod = new Emitter();
 
 // Helper functions
 
@@ -85,33 +79,22 @@ Arachnod.stats =  {
      * @param taskp
      */
     function checkUrl(tag, taskp) {
-        var lastPart = function (str, add) {
-            var cur = str.substr(0, (str.lastIndexOf('/')+1));
-            if (_.isNull(cur)){ cur = '/'; }
-            return  cur + add;
-        };
-        if (!!tag.attribs.href){
-            var href = tag.attribs.href,
+
+        if (!!tag.get(0).href){
+            var href = tag.get(0).href,
                 urlp = url.parse(href),
                 queue = true;
 
             // already added. i guess.
-            if (_.indexOf(Arachnod.urlCache, href) !== -1){ return null; }
+            if (_.indexOf(urlCache, href) !== -1){ return null; }
 
             // relative links
-            if (!/^(?:[a-z]+:)?\/\//i.test(href)){
-                urlp.protocol = taskp.protocol;
-                urlp.host = taskp.host;
-                urlp.hostname = taskp.hostname;
-
-                href = urlp.protocol+'//'+urlp.host + lastPart(taskp.pathname, href);
-            }
-
-            //log(href, !/^(?:[a-z]+:)?\/\//i.test(href), urlp, tag);
-
-
-
-            //log('urlp, href', href, taskp, urlp);
+            //if (!/^(?:[a-z]+:)?\/\//i.test(href)){
+            //    urlp.protocol = taskp.protocol;
+            //    urlp.host = taskp.host;
+            //    urlp.hostname = taskp.hostname;
+            //    href = urlp.protocol+'//'+urlp.host + lastPart(taskp.pathname, href);
+            //}
 
             // Not the same domain
             if (urlp.host !== taskp.host){ queue = false; }
@@ -141,11 +124,11 @@ Arachnod.stats =  {
 
             if (queue && !_.isNull(urlp.path)){
                 Arachnod.queue({"url": href});
-                Arachnod.urlCache.push(href);
-                Arachnod.urlCache = _.uniq(Arachnod.urlCache);
-                if (params.verbose > 8){ log('queue url', Arachnod.urlCache.length, href, urlp.path); }
+                urlCache.push(href);
+                urlCache = _.uniq(urlCache);
+                if (params.verbose > 8){ log('queue url', urlCache.length, href, urlp.path); }
             } else {
-                Arachnod.stats.ignored++;
+                stats.ignored++;
             }
         }
     }
@@ -192,9 +175,9 @@ Arachnod.stats =  {
      */
     function checkSpi() {
         setTimeout(function () {
-            if (spiderlings.length === 0 && Arachnod.ended === false){
-                Arachnod.emit('end', Arachnod.stats, Arachnod.urlCache);
-                Arachnod.ended = true;
+            if (spiderlings.length === 0 && ended === false){
+                Arachnod.emit('end', stats, urlCache);
+                ended = true;
                 console.timeEnd('botTime');
             }
         }, 200);
@@ -205,15 +188,15 @@ Arachnod.stats =  {
      * Redis stats
      */
     function getCounts() {
-        Arachnod.rc.multi()
+        redis.multi()
             .scard(tasks)
             .scard(finished)
             .dbsize()
             .exec(function (err, reply) {
-                Arachnod.stats.tasks = reply[0];
-                Arachnod.stats.finished = reply[1];
-                Arachnod.stats.dbsize = reply[2];
-                Arachnod.stats.urlCount = Arachnod.urlCache.length;
+                stats.tasks = reply[0];
+                stats.finished = reply[1];
+                stats.dbsize = reply[2];
+                stats.urlCount = urlCache.length;
             });
     }
 
@@ -240,7 +223,7 @@ Arachnod.stats =  {
     function processHit(task, result) {
 
         if (!!result && !!task && !!task.url && result.status === 200){
-            status = "parsing " + task.url; Arachnod.stats.downloaded++;
+            status = "parsing " + task.url; stats.downloaded++;
             try {
                 // only text/html will be downloaded!
                 if (result.headers['content-type'].slice(0,9) !== 'text/html'){ throw 'cancelUrl'; }
@@ -252,22 +235,27 @@ Arachnod.stats =  {
                 _.assign(doc, taskp);
                 // loop links
                 // @TODO: parse JS links with window.location
-                _.each($('a'), function (tag) { checkUrl(_.omit(tag, ['parent', 'prev', 'next']),  taskp); });
-                Arachnod.stats.finished++;
+
+
+                _.each($('a').get(), function (tag) {
+                    log(tag.attribs);
+                    // checkUrl(_.omit(tag, ['parent', 'prev', 'next']),  taskp);
+                });
+                stats.finished++;
                 Arachnod.emit('hit', doc, $);
 
             } catch(e) {
                 if (e === 'retry'){
                     Arachnod.queue(task);
-                    Arachnod.stats.retry++;
+                    stats.retry++;
                 } else if (e === 'cancelUrl') {
                     if (params.verbose > 5){ log('canceled', task); }
-                    Arachnod.stats.canceled++;
+                    stats.canceled++;
                 } else if (e === 'ignoreUrl') {
                     if (params.verbose > 5){ log('ignored', task); }
-                    Arachnod.stats.ignored++;
+                    stats.ignored++;
                 } else {
-                    Arachnod.stats.failed++;
+                    stats.failed++;
                     Arachnod.emit('error', [task, e, (!_.isUndefined(e.stack)?e.stack:'none')]);
                 }
                 //Arachnod.taskRetry(task, result.res.statusCode);
@@ -286,9 +274,9 @@ Arachnod.stats =  {
      * @param cb
      */
     function resetQueues(cb) {
-        Arachnod.rc.del(tasks, function (err, rt) {
+        redis.del(tasks, function (err, rt) {
             if (err) { throw err; }
-            Arachnod.rc.del(finished, function (err, rf) {
+            redis.del(finished, function (err, rf) {
                 if (err) { throw err; }
                 log('Task Queue has been reset!');
                 cb(rt, rf);
@@ -304,9 +292,9 @@ Arachnod.stats =  {
      * @returns {{tasks: number, downloaded: number, canceled: number, ignored: number, finished: number, retry: number, failed: number}}
      */
     Arachnod.getStats = function () {
-        Arachnod.stats.mem = Math.ceil((process.memoryUsage().rss/1024)/1024) + 'MB';
-        Arachnod.stats.children = spiderlings.length;
-        return Arachnod.stats;
+        stats.mem = Math.ceil((process.memoryUsage().rss/1024)/1024) + 'MB';
+        stats.children = spiderlings.length;
+        return stats;
     };
 
 
@@ -318,10 +306,10 @@ Arachnod.stats =  {
     Arachnod.queue = function (taskData) {
         if (!!taskData.url){
             var taskStr = JSON.stringify(taskData);
-            Arachnod.rc.sismember(finished, taskStr, function (err, res) {
+            redis.sismember(finished, taskStr, function (err, res) {
                 if (!res){
-                    Arachnod.rc.sadd(tasks, taskStr);
-                    Arachnod.stats.linkCount++;
+                    redis.sadd(tasks, taskStr);
+                    stats.linkCount++;
                 }
             });
         }
@@ -369,7 +357,7 @@ Arachnod.stats =  {
 
         params = _.defaults(userParams, params);
 
-        Arachnod.rc = redis.createClient(params.redisPort, params.redis);
+        redis = Redis.createClient(params.redisPort, params.redis);
 
         if (!params.resume){
             resetQueues(initiate);
