@@ -54,6 +54,8 @@ var child   = require('child_process'),
             'sameDomain': true,
             'useCookies': true,
             'obeyRobotsTxt': false,
+            'auth': null,
+            'cookie': null,
             'ignorePaths': [],
             'ignoreParams': []
         };
@@ -143,6 +145,10 @@ var Arachnod = new Emitter();
         if (!!msg.cmd && msg.cmd === 'hit'){
             processHit(msg.task, msg.result);
             getCounts();
+        }
+
+        if (!!msg.cmd && msg.cmd === 'cookie'){
+            console.log('got cookie', msg);
         }
 
         if (!!msg.cmd && msg.cmd === 'error'){

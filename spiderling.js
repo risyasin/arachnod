@@ -45,21 +45,29 @@ var ps      = process.argv.splice(2),
  */
 function getTask(cb) {
     rc.spop(tasks, function (err, task) {
-        if (err){ log('getTask', err); }
-        if (verbosity > 3){ log('gottask', process.pid, task); }
-        if (!_.isNull(task)){
+        
+        if (err){ 
+            log('getTask', err); 
+        }
+        
+        if (verbosity > 3){ 
+            log('gottask', process.pid, task);
+        }
+
+        if (!_.isNull(task)) {
             retry = 0;
             run.status = 'gottask';
             task = JSON.parse(task);
             cb(task);
         } else {
             run.status = 'idle';
-            if (verbosity > 5){ log('status', process.pid, run.status); }
+            if (verbosity > 5) { 
+                log('status', process.pid, run.status); 
+            }
             setTimeout(run, 200);
             retry++;
-
-
         }
+
     });
 }
 
@@ -72,21 +80,32 @@ function getTask(cb) {
 function getUrl(task, cb) {
     run.status = 'downloading';
     if (verbosity > 5){ log(['status', run.status, task.url]); }
+
     _.extend(cfg.headers, {
         'User-Agent': _.sample(cfg.userAgents.chrome, 1),
-        'X-Requested-With': 'XMLHttpRequest',
         'Expires':'-1',
         'Cache-Control': 'no-cache,no-store,must-revalidate,max-age=-1,private'
     });
 
-    Agent.get(task.url)
-        .set(cfg.headers)
-        .timeout(5000)
-        .on('error', function (err) { process.send({'cmd':'error','error': err,'task': task}); })
-        .end(function(err, result){
-            if (verbosity > 5){ log(['downloaded', task.url, result.headers['content-type']]); }
-            cb(err, task, result);
-        });
+    Agent.get(task.url).set(cfg.headers).timeout(5000);
+
+    if(!_.isNull(task.auth)) {
+        var user = task.auth.split(':');
+        Agent.auth(user, pass);
+    }
+
+    if(!_.isNull(task.cookie)) {
+        Agent.set('Cookie', task.cookie);
+    }
+
+    Agent.on('error', function (err) { 
+        process.send({'cmd':'error','error': err,'task': task}); 
+    });
+    
+    Agent.end(function(err, result){
+        if (verbosity > 5){ log(['downloaded', task.url, result.headers['content-type']]); }
+        cb(err, task, result);
+    });
 }
 
 /**
@@ -116,13 +135,19 @@ function taskRetry(task, code) {
  * @param result
  */
 function processResponse(err, task, result) {
-    if (err){
+    if (err) {
         process.send({'cmd': 'error', 'error': err, 'task': task});
         run.status = 'retrying';
         taskRetry(task, result.status);
+
     } else {
+        
         run.status = 'processing';
-        if (verbosity > 5){ log('processing', task.url, result.statusCode); }
+        
+        if (verbosity > 5) { 
+            log('processing', task.url, result.statusCode); 
+        }
+
         process.send({
             'cmd': 'hit',
             'task': task,
@@ -132,6 +157,12 @@ function processResponse(err, task, result) {
                 'headers': result.headers,
                 'text': result.text
         }});
+
+        process.send({
+            'cmd': 'cookie',
+            'value': result.headers.cookie
+        });
+
         finish(task);
     }
 }

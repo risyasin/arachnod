@@ -1,6 +1,8 @@
 support
-test
+tests
 examples
 *.sock
 lib-cov
 coverage.html
+docs
+.jshintrc
